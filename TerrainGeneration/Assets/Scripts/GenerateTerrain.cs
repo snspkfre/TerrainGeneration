@@ -9,9 +9,12 @@ public class GenerateTerrain : MonoBehaviour
     [SerializeField] int size = 128;
     [SerializeField] GameObject prefab;
 
+
     // Start is called before the first frame update
     void Start()
     {
+        GameObject[,,] objs = new GameObject[size, size, size];
+
         RenderTexture voxelData = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32);
         voxelData.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
         voxelData.volumeDepth = size;
@@ -22,7 +25,7 @@ public class GenerateTerrain : MonoBehaviour
 
         cs.SetTexture(kernelHandle, "result", voxelData);
         cs.Dispatch(kernelHandle, size / 8, size / 8, size / 8);
-
+        
         float[,,] strength = new float[size, size, size];
         for(int z = 0; z < size; z++)
         {
@@ -41,9 +44,7 @@ public class GenerateTerrain : MonoBehaviour
             {
                 for (int x = 0; x < size; x++)
                 {
-                    GameObject point = Instantiate(prefab, new Vector3(x, y, z), Quaternion.identity);
-                    point.transform.localScale = Vector3.one / 2;
-                    point.GetComponent<MeshRenderer>().materials[0].SetColor("_Color", new UnityEngine.Color(strength[x, y, z], strength[x, y, z], strength[x, y, z], 1));
+                    if (strength[x,y,z] > 0.5) objs[x, y, z] = Instantiate(prefab, new Vector3(x, y, z), Quaternion.identity);
                 }
             }
         }
@@ -51,6 +52,17 @@ public class GenerateTerrain : MonoBehaviour
 
     public static float Perlin3D(float x, float y, float z)
     {
-        return (Mathf.PerlinNoise1D(x * 0.1f) + Mathf.PerlinNoise1D(y * 0.1f) + Mathf.PerlinNoise1D(z * 0.1f)) / 3;
+        x *= 0.1f;
+        y *= 0.1f;
+        z *= 0.1f;
+
+        float xy = Mathf.PerlinNoise(x, y);
+        float xz = Mathf.PerlinNoise(x, z);
+        float yx = Mathf.PerlinNoise(y, x);
+        float yz = Mathf.PerlinNoise(y, z);
+        float zx = Mathf.PerlinNoise(z, x);
+        float zy = Mathf.PerlinNoise(z, y);
+
+        return (xy + xz + yx + yz + zx + zy) / 6;
     }
 }
