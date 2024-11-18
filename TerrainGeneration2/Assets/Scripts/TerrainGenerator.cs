@@ -7,7 +7,7 @@ public class TerrainGenerator : MonoBehaviour
     private Terrain terrain;
 
     [SerializeField] private int width = 256;
-    [SerializeField] private int height = 256;
+    [SerializeField] private int length = 256;
 
     public float freq = 16f;
     public float radius = 0.5f;
@@ -16,15 +16,17 @@ public class TerrainGenerator : MonoBehaviour
     private float seed;
 
     public float grassHeight = 0f;
-    public float rockHeight = 0.25f;
-    public float snowHeight = 0.3f;
+    public float rockBegin = 0.25f;
+    public float rockEnd = 0.35f;
+    public float snowHeight = 0.4f;
 
     [SerializeField] UnityEngine.UI.Slider freqSlider;
     [SerializeField] UnityEngine.UI.Slider ampSlider;
     [SerializeField] UnityEngine.UI.Slider radiusSlider;
 
     [SerializeField] UnityEngine.UI.Slider grassSlider;
-    [SerializeField] UnityEngine.UI.Slider rockSlider;
+    [SerializeField] UnityEngine.UI.Slider rockBeginSlider;
+    [SerializeField] UnityEngine.UI.Slider rockEndSlider;
     [SerializeField] UnityEngine.UI.Slider snowSlider;
 
     // Start is called before the first frame update
@@ -34,25 +36,72 @@ public class TerrainGenerator : MonoBehaviour
         seed = Random.Range(0f, 1000f);
         terrain.terrainData = GenerateTerrain(terrain.terrainData);
         PaintTerrain();
-        /*
+        
         freqSlider.value = freq;
         ampSlider.value = amplitude;
         radiusSlider.value = radius;
 
         grassSlider.value = grassHeight;
-        rockSlider.value = rockHeight;
-        snowSlider.value = snowHeight;*/
+        rockBeginSlider.value = rockBegin;
+        rockEndSlider.value = rockEnd;
+        snowSlider.value = snowHeight;
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (freqSlider.value != freq)
+        {
+            freq = freqSlider.value;
+            terrain.terrainData = GenerateTerrain(terrain.terrainData);
+            PaintTerrain();
+        }
+
+        if (ampSlider.value != amplitude)
+        {
+            amplitude = ampSlider.value;
+            terrain.terrainData = GenerateTerrain(terrain.terrainData);
+            PaintTerrain();
+        }
+
+        if (radiusSlider.value != radius)
+        {
+            radius = radiusSlider.value;
+            terrain.terrainData = GenerateTerrain(terrain.terrainData);
+            PaintTerrain();
+        }
+
+        if (grassHeight != grassSlider.value)
+        {
+            grassHeight = Mathf.Min(grassSlider.value, rockBegin);
+            grassSlider.value = grassHeight;
+            PaintTerrain();
+        }
+        if (rockBegin != rockBeginSlider.value)
+        {
+            rockBegin = Mathf.Min(Mathf.Max(rockBeginSlider.value, grassHeight), rockEnd);
+            rockBeginSlider.value = rockBegin;
+            PaintTerrain();
+        }
         
+        if (rockEnd != rockEndSlider.value)
+        {
+            rockEnd = Mathf.Min(Mathf.Max(rockEndSlider.value, rockBegin), snowHeight);
+            rockEndSlider.value = rockEnd;
+            PaintTerrain();
+        }
+
+        if (snowHeight != snowSlider.value)
+        {
+            snowHeight = Mathf.Max(snowSlider.value, rockEnd);
+            snowSlider.value = snowHeight;
+            PaintTerrain();
+        }
     }
 
     TerrainData GenerateTerrain(TerrainData terrainData)
     {
-        terrainData.size = new Vector3(width, 50, height);
+        terrainData.size = new Vector3(width, 50, length);
         terrainData.SetHeights(0, 0, GetHeightArray());
         return terrainData;
     }
@@ -74,7 +123,7 @@ public class TerrainGenerator : MonoBehaviour
                 float xCoord = (i + seed) / size * freq;
                 float yCoord = (j + seed) / size * freq;
 
-                float noise = NoiseGenerator(xCoord, yCoord);
+                float noise = NoiseGenerator(xCoord, yCoord, 10);
 
                 float distance = Mathf.Sqrt(Mathf.Pow(i - center, 2) + Mathf.Pow(j - center, 2));
 
@@ -87,8 +136,12 @@ public class TerrainGenerator : MonoBehaviour
         return heights;
     }
 
-    float NoiseGenerator(float x, float y)
+    float NoiseGenerator(float x, float y, int numPoints)
     {
+        List<Vector3> points = new List<Vector3>();
+        for(int i = 0; i < numPoints; i++)
+        {
+        }
         return Mathf.PerlinNoise(x, y);
     }
 
@@ -113,11 +166,17 @@ public class TerrainGenerator : MonoBehaviour
                     splatmapData[x, y, 1] = 0;
                     splatmapData[x, y, 2] = 0;
                 }
-                else if (terrainHeight <= rockHeight)
+                else if (terrainHeight <= rockBegin)
                 {
-                    float blend = Mathf.InverseLerp(grassHeight, rockHeight, terrainHeight);
+                    float blend = Mathf.InverseLerp(grassHeight, rockBegin, terrainHeight);
                     splatmapData[x, y, 0] = 1 - blend;
                     splatmapData[x, y, 1] = blend;
+                    splatmapData[x, y, 2] = 0;
+                }
+                else if (height <= rockEnd)
+                {
+                    splatmapData[x, y, 0] = 0;
+                    splatmapData[x, y, 1] = 1;
                     splatmapData[x, y, 2] = 0;
                 }
                 else if (terrainHeight >= snowHeight)
@@ -128,7 +187,7 @@ public class TerrainGenerator : MonoBehaviour
                 }
                 else
                 {
-                    float blend = Mathf.InverseLerp(rockHeight, snowHeight, terrainHeight);
+                    float blend = Mathf.InverseLerp(rockEnd, snowHeight, terrainHeight);
                     splatmapData[x, y, 0] = 0;
                     splatmapData[x, y, 1] = 1 - blend;
                     splatmapData[x, y, 2] = blend;
@@ -137,5 +196,12 @@ public class TerrainGenerator : MonoBehaviour
         }
 
         data.SetAlphamaps(0, 0, splatmapData);
+    }
+
+    public void NewSeed()
+    {
+        seed = Random.Range(0f, 1000f);
+        terrain.terrainData = GenerateTerrain(terrain.terrainData);
+        PaintTerrain();
     }
 }
