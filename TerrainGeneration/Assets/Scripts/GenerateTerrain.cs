@@ -1,68 +1,124 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
 using UnityEngine;
 
 public class GenerateTerrain : MonoBehaviour
 {
-
     [SerializeField] int size = 128;
-    [SerializeField] GameObject prefab;
+    [SerializeField] ComputeShader noiseShader;
+    [SerializeField] ComputeShader terrainShader;
 
+    [HideInInspector] public RenderTexture strengthTexture;
+
+    ComputeBuffer vertexBuffer;
+    ComputeBuffer indexBuffer;
+    ComputeBuffer vertexCountBuffer;
+    ComputeBuffer indexCountBuffer;
+
+    const int MaxVertices = 10000;
+    const int MaxIndices = 10000;
+
+    Mesh mesh;
 
     // Start is called before the first frame update
     void Start()
     {
-        GameObject[,,] objs = new GameObject[size, size, size];
+        Create3DTexture(ref strengthTexture, size, "StrengthTexture");
 
-        RenderTexture voxelData = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32);
-        voxelData.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
-        voxelData.volumeDepth = size;
-        voxelData.enableRandomWrite = true;
-        voxelData.Create();
-        ComputeShader cs = Resources.Load<ComputeShader>("NoiseCreator");
-        int kernelHandle = cs.FindKernel("CSMain");
+        vertexBuffer = new ComputeBuffer(MaxVertices, sizeof(float) * 3);
+        indexBuffer = new ComputeBuffer(MaxIndices, sizeof(uint));
+        vertexCountBuffer = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
+        indexCountBuffer = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
 
-        cs.SetTexture(kernelHandle, "result", voxelData);
-        cs.Dispatch(kernelHandle, size / 8, size / 8, size / 8);
-        
-        float[,,] strength = new float[size, size, size];
-        for(int z = 0; z < size; z++)
+        OnGenerate();
+    }
+
+    public void OnGenerate()
+    {
+        noiseShader.SetTexture(0, "StrengthTexture", strengthTexture);
+        int threadGroups = Mathf.CeilToInt(size / 8.0f);
+        noiseShader.Dispatch(0, threadGroups, threadGroups, threadGroups);
+
+        GenerateMesh();
+    }
+
+    void GenerateMesh()
+    {
+        // Reset counters
+        uint[] zeroArray = { 0 };
+        vertexCountBuffer.SetData(zeroArray);
+        indexCountBuffer.SetData(zeroArray);
+
+        // Set compute shader parameters
+        terrainShader.SetTexture(0, "StrengthTexture", strengthTexture);
+        terrainShader.SetBuffer(0, "vertexBuffer", vertexBuffer);
+        terrainShader.SetBuffer(0, "indexBuffer", indexBuffer);
+        terrainShader.SetBuffer(0, "vertexCount", vertexCountBuffer);
+        terrainShader.SetBuffer(0, "indexCount", indexCountBuffer);
+
+        int threadGroups = Mathf.CeilToInt(size / 8.0f);
+        terrainShader.Dispatch(0, threadGroups, threadGroups, threadGroups);
+
+        // Read the counters to determine how many vertices and indices were written
+        uint[] vertexCountArray = new uint[1];
+        uint[] indexCountArray = new uint[1];
+        vertexCountBuffer.GetData(vertexCountArray);
+        indexCountBuffer.GetData(indexCountArray);
+        int vertexCount = (int)vertexCountArray[0];
+        int indexCount = (int)indexCountArray[0];
+
+        if (vertexCount > 0 && indexCount > 0)
         {
-            for(int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    strength[x, y, z] = Perlin3D(x, y, z);
-                }
-            }
-        }
+            Vector3[] vertices = new Vector3[vertexCount];
+            int[] indices = new int[indexCount];
 
-        for (int z = 0; z < size; z++)
-        {
-            for (int y = 0; y < size; y++)
+            vertexBuffer.GetData(vertices, 0, 0, vertexCount);
+            indexBuffer.GetData(indices, 0, 0, indexCount);
+
+            if (mesh == null)
             {
-                for (int x = 0; x < size; x++)
-                {
-                    if (strength[x,y,z] > 0.5) objs[x, y, z] = Instantiate(prefab, new Vector3(x, y, z), Quaternion.identity);
-                }
+                mesh = new Mesh();
             }
+            mesh.Clear();
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+            mesh.vertices = vertices;
+            mesh.triangles = indices;
+            mesh.RecalculateNormals();
+
+            GetComponent<MeshFilter>().mesh = mesh;
         }
     }
 
-    public static float Perlin3D(float x, float y, float z)
+    void Create3DTexture(ref RenderTexture texture, int size, string name)
     {
-        x *= 0.1f;
-        y *= 0.1f;
-        z *= 0.1f;
+        var format = UnityEngine.Experimental.Rendering.GraphicsFormat.R32_SFloat;
+        if (texture == null || !texture.IsCreated() || texture.width != size || texture.height != size || texture.volumeDepth != size || texture.graphicsFormat != format)
+        {
+            if (texture != null)
+            {
+                texture.Release();
+            }
 
-        float xy = Mathf.PerlinNoise(x, y);
-        float xz = Mathf.PerlinNoise(x, z);
-        float yx = Mathf.PerlinNoise(y, x);
-        float yz = Mathf.PerlinNoise(y, z);
-        float zx = Mathf.PerlinNoise(z, x);
-        float zy = Mathf.PerlinNoise(z, y);
+            const int numBitsInDepthBuffer = 0;
+            texture = new RenderTexture(size, size, numBitsInDepthBuffer);
+            texture.graphicsFormat = format;
+            texture.volumeDepth = size;
+            texture.enableRandomWrite = true;
+            texture.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
 
-        return (xy + xz + yx + yz + zx + zy) / 6;
+            texture.Create();
+        }
+        texture.wrapMode = TextureWrapMode.Repeat;
+        texture.filterMode = FilterMode.Bilinear;
+        texture.name = name;
+    }
+
+    void OnDestroy()
+    {
+        vertexBuffer.Release();
+        indexBuffer.Release();
+        vertexCountBuffer.Release();
+        indexCountBuffer.Release();
     }
 }

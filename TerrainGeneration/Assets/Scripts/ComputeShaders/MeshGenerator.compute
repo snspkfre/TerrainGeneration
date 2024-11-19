@@ -1,0 +1,58 @@
+#pragma kernel CSMain
+
+#define VOXEL_THRESHOLD 0.5
+#define VOXEL_SIZE 1.0
+
+RWTexture3D<float> StrengthTexture;
+
+RWStructuredBuffer<float3> vertexBuffer;
+RWStructuredBuffer<uint> indexBuffer;
+RWStructuredBuffer<uint> vertexCount;
+RWStructuredBuffer<uint> indexCount;
+
+float3 cubeVertices[8] =
+{
+    float3(-0.5, -0.5, -0.5),
+    float3(0.5, -0.5, -0.5),
+    float3(0.5, 0.5, -0.5),
+    float3(-0.5, 0.5, -0.5),
+    float3(-0.5, -0.5, 0.5),
+    float3(0.5, -0.5, 0.5),
+    float3(0.5, 0.5, 0.5),
+    float3(-0.5, 0.5, 0.5)
+};
+
+uint cubeIndices[36] =
+{
+    0, 1, 2, 0, 2, 3, // front
+    4, 5, 6, 4, 6, 7, // back
+    0, 1, 5, 0, 5, 4, // bottom
+    2, 3, 7, 2, 7, 6, // top
+    0, 3, 7, 0, 7, 4, // left
+    1, 2, 6, 1, 6, 5 // right
+};
+
+// Thread group dimensions
+[numthreads(8, 8, 8)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    float voxelStrength = StrengthTexture[id];
+    
+    if (voxelStrength > VOXEL_THRESHOLD)
+    {
+        uint vertOffset;
+        uint indexOffset;
+        InterlockedAdd(vertexCount[0], 8, vertOffset);
+        InterlockedAdd(indexCount[0], 36, indexOffset);
+        
+        for (uint i = 0; i < 8; i++)
+        {
+            vertexBuffer[vertOffset + i] = cubeVertices[i] * VOXEL_SIZE + (float3) id;
+        }
+        
+        for (uint i = 0; i < 36; i++)
+        {
+            indexBuffer[indexOffset + i] = cubeIndices[i] + vertOffset;
+        }
+    }
+}

@@ -1136,7 +1136,7 @@ MonoBehaviour:
   width: 256
   length: 256
   freq: 16
-  radius: 0.5
+  radius: 2
   amplitude: 1.2
   grassHeight: 0
   rockBegin: 0.25
@@ -4085,7 +4085,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 1932170747}
   m_Direction: 0
   m_MinValue: 0
-  m_MaxValue: 1
+  m_MaxValue: 2
   m_WholeNumbers: 0
   m_Value: 0
   m_OnValueChanged:

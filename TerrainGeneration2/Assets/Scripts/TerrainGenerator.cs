@@ -20,6 +20,8 @@ public class TerrainGenerator : MonoBehaviour
     public float rockEnd = 0.35f;
     public float snowHeight = 0.4f;
 
+    List<Vector3> noisePoints = new List<Vector3>();
+
     [SerializeField] UnityEngine.UI.Slider freqSlider;
     [SerializeField] UnityEngine.UI.Slider ampSlider;
     [SerializeField] UnityEngine.UI.Slider radiusSlider;
@@ -32,6 +34,7 @@ public class TerrainGenerator : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        NoiseGenerationSetup(Mathf.FloorToInt(freq));
         terrain = GetComponent<Terrain>();
         seed = Random.Range(0f, 1000f);
         terrain.terrainData = GenerateTerrain(terrain.terrainData);
@@ -120,10 +123,10 @@ public class TerrainGenerator : MonoBehaviour
         {
             for (int j = 0; j < size; j++)
             {
-                float xCoord = (i + seed) / size * freq;
-                float yCoord = (j + seed) / size * freq;
+                float xCoord = (i + seed) / size;
+                float yCoord = (j + seed) / size;
 
-                float noise = NoiseGenerator(xCoord, yCoord, 10);
+                float noise = NoiseGenerator(xCoord, yCoord);
 
                 float distance = Mathf.Sqrt(Mathf.Pow(i - center, 2) + Mathf.Pow(j - center, 2));
 
@@ -136,13 +139,29 @@ public class TerrainGenerator : MonoBehaviour
         return heights;
     }
 
-    float NoiseGenerator(float x, float y, int numPoints)
+    void NoiseGenerationSetup(int numPoints)
     {
-        List<Vector3> points = new List<Vector3>();
-        for(int i = 0; i < numPoints; i++)
+        noisePoints.Clear();
+        for (int i = 0; i < numPoints; i++)
         {
+            noisePoints.Add(new Vector3(Random.Range(0f, 1f), Random.Range(0f, 1f), Random.Range(0f, 1f)));
         }
-        return Mathf.PerlinNoise(x, y);
+    }
+    
+    float NoiseGenerator(float x, float y)
+    {
+        Vector2 position = new Vector2(x % 1f, y % 1f); // Ensure position is within 0-1 bounds
+        float closestHeight = 0f;
+        int min = 0;
+        List<float> distances = new List<float>();
+
+        for (int i = 0; i < noisePoints.Count; i++)
+        {
+            distances.Add(Vector2.Distance(position, noisePoints[i]));
+            if (distances[i] < distances[min]) min = i;
+        }
+
+        return noisePoints[min].z;
     }
 
     void PaintTerrain()
@@ -201,6 +220,7 @@ public class TerrainGenerator : MonoBehaviour
     public void NewSeed()
     {
         seed = Random.Range(0f, 1000f);
+        NoiseGenerationSetup(Mathf.FloorToInt(freq));
         terrain.terrainData = GenerateTerrain(terrain.terrainData);
         PaintTerrain();
     }
